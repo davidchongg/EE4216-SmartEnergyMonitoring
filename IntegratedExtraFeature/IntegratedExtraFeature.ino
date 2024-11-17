@@ -99,7 +99,7 @@ void connectWifi() {
 // ************************************
 // Turn on LED strip
 void onLight() {
-  digitalWrite(RELAY_PIN2, RELAY_ON);     
+  digitalWrite(RELAY_PIN2, RELAY_ON);                   // Activate/Turn on relay 2
   delay(200);                                           // Introduce delay to overcome hardware delay of relays
   for (int i = 0; i < 8; i++) {
     strip.setPixelColor(i, strip.Color(64, 64, 64));    // White color
@@ -111,32 +111,37 @@ void onLight() {
 
 // Turn off LED strip
 void offLight() {
-  digitalWrite(RELAY_PIN2, RELAY_OFF);
-  ledStripOn = false;
+  digitalWrite(RELAY_PIN2, RELAY_OFF);                  // Deactivate/Turn off relay 2
+  ledStripOn = false;                                   // Update state of LED strip
 }
 
+// Turn on motor fan
 void onFan() {
   digitalWrite(RELAY_PIN1, RELAY_ON);
   motorFanOn = true;
   lastMovementTime = millis();
 }
 
+// Turn off motor fan
 void offFan() {
   digitalWrite(RELAY_PIN1, RELAY_OFF);
   motorFanOn = false;
 }
 
+// Turn on washing machine (motor)
 void startWashing() {
   digitalWrite(RELAY_PIN3, RELAY_ON);
   washingOn = true;
   washingStartTime = millis();
 }
 
+// Turn off washing machine (motor)
 void stopWashing() {
   digitalWrite(RELAY_PIN3, RELAY_OFF);
   washingOn = false;
 }
 
+// Toggle on/off fan
 void toggleFan() {
   if (!motorFanOn) { 
     onFan();
@@ -145,6 +150,7 @@ void toggleFan() {
   }
 }
 
+// Toggle on/off light 
 void toggleLight() {
   if (!ledStripOn) { 
     onLight();
@@ -170,38 +176,36 @@ float getWashingPower() { return ina260_4.readPower(); }
 float getWashingCurrent() { return ina260_4.readCurrent(); }
 float getWashingVoltage() {return ina260_4.readBusVoltage(); }
 
+// Check if there is movement detected (check if distance measured is lowered due to movement of person)
 bool checkMovement(int trigPin, int echoPin) {
   long duration;
   float distanceCm;
 
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
-  // Sets the trigPin on HIGH state for 10 micro seconds
-  digitalWrite(trigPin, HIGH);
+  digitalWrite(trigPin, HIGH);                                  // Sets the trigPin on HIGH state for 10 micro seconds
   delayMicroseconds(10);
   digitalWrite(trigPin, LOW);
   
-  // Reads the echoPin, returns the sound wave travel time in microseconds
-  duration = pulseIn(echoPin, HIGH);
-  
-  // Calculate the distance
-  distanceCm = duration * SOUND_SPEED/2;
+  duration = pulseIn(echoPin, HIGH);                            // Reads the echoPin, returns the sound wave travel time in microseconds
+  distanceCm = duration * SOUND_SPEED/2;                        // Calculate the distance
   // Serial.println(distanceCm);
-  return (distanceCm < 12 && distanceCm != 0) ? true : false;
+  return (distanceCm < 12 && distanceCm != 0) ? true : false;   // Return true if distance less than 12cm (movement in front of ultrasonic sensor)
+                                                                // Prototype setup usually without movement distance is about 13cm (to wall in front)
 }
 
 void checkUltrasonic() {
-  bool movement = checkMovement(TRIG_PIN1, ECHO_PIN1) | checkMovement(TRIG_PIN2, ECHO_PIN2);
+  bool movement = checkMovement(TRIG_PIN1, ECHO_PIN1) | checkMovement(TRIG_PIN2, ECHO_PIN2);    // Check for movement in both left and right ultrasonic sensor
 
-  if (!movement && !offByNoMovement) {
-    if (millis() - lastMovementTime > 20000) {
+  if (!movement && !offByNoMovement) {                                                          // If any movement detected and not previously already trigerred turn off due to no movement 
+    if (millis() - lastMovementTime > 20000) {                                                  // If time since last movement detected is greater than threshold (need set to more realistic value for real applications)
       Serial.println("No movement detected for more than 20s, turning off fan and light to conserve electricity");
       offFan();
       offLight();
       offByNoMovement = true;
     }
   } else {
-    lastMovementTime = millis();
+    lastMovementTime = millis();                                                                // Update time of last movement detected
     offByNoMovement = false;
   }
 }
@@ -211,33 +215,33 @@ void checkUltrasonic() {
 // ************************************
 // Upload data to Flask server
 void uploadData(const char* device, float power, float current, float voltage) {
-  if (WiFi.status() == WL_CONNECTED) {
-    HTTPClient http;
-    http.begin(String(serverAddress) + "/upload_data");
-    http.addHeader("Content-Type", "application/json");
+  if (WiFi.status() == WL_CONNECTED) {                      // Check if wifi connection is active
+    HTTPClient http;                                        // Create an http client object
+    http.begin(String(serverAddress) + "/upload_data");     // Initialize connection to the server endpoint
+    http.addHeader("Content-Type", "application/json");     // Specify the content type of the request
 
-    String jsonData = "{\"device\":\"" + String(device) + "\",\"power\":" + String(power) +
-                      ",\"current\":" + String(current) + ",\"voltage\":" + String(voltage) + "}";
+    String jsonData = "{\"device\":\"" + String(device) + "\",\"power\":" + String(power) +           // Construct the JSON payload with the device name, 
+                      ",\"current\":" + String(current) + ",\"voltage\":" + String(voltage) + "}";    // power, current, and voltage
 
-    int httpResponseCode = http.POST(jsonData);
+    int httpResponseCode = http.POST(jsonData);                                                       // Send a POST request with the JSON data and get the response code
 
-    if (httpResponseCode > 0) {
-      Serial.printf("Data upload successful, response code: %d\n", httpResponseCode);
+    if (httpResponseCode > 0) {                                                                       // Check if the response code indicates success
+      Serial.printf("Data upload successful, response code: %d\n", httpResponseCode);                 // Print success message with the response code
     } else {
-      Serial.printf("Error on data upload: %s\n", http.errorToString(httpResponseCode).c_str());
+      Serial.printf("Error on data upload: %s\n", http.errorToString(httpResponseCode).c_str());      // Print error message if the upload fails
     }
-    http.end();
+    http.end();                                             // End the HTTP connection
   } else {
     Serial.println("WiFi not connected, skipping data upload.");
   }
 }
 
-// Handle incoming control requests
+// Handle incoming control requests via a web server
 void handleControlRequest(AsyncWebServerRequest *request) {
-  if (request->hasParam("appliance", true) && request->hasParam("action", true)) {
-    String appliance = request->getParam("appliance", true)->value();
+  if (request->hasParam("appliance", true) && request->hasParam("action", true)) {    // Check if the necessary parameters 'appliance' and 'action' are present in the request
+    String appliance = request->getParam("appliance", true)->value();                 // Extract parameter values for 'appliance' and 'action'
     String action = request->getParam("action", true)->value();
-    if (action == "turn_off") {
+    if (action == "turn_off") {                                                       // Handle 'turn_off' action for specific appliances
       if (appliance == "Motor Fan") {
         offFan();
       } else if (appliance == "LED Strip") {
@@ -245,9 +249,9 @@ void handleControlRequest(AsyncWebServerRequest *request) {
       } else if (appliance == "Washing Machine") {
         stopWashing();
       }
-      request->send(200, "text/plain", appliance + " turned off");
+      request->send(200, "text/plain", appliance + " turned off");                    // Send a response indicating the appliance was turned off
       Serial.println(appliance + " turned off via server request");
-    } else if (action == "turn_on") {
+    } else if (action == "turn_on") {                                                 // Handle 'turn_on' action for specific appliances
       if (appliance == "Motor Fan") {
         onFan();
       } else if (appliance == "LED Strip") {
@@ -255,17 +259,17 @@ void handleControlRequest(AsyncWebServerRequest *request) {
       } else if (appliance == "Washing Machine") {
         startWashing();
       }
-      request->send(200, "text/plain", appliance + " turned on");
+      request->send(200, "text/plain", appliance + " turned on");                     // Send a response indicating the appliance was turned on
       Serial.println(appliance + " turned off via server request");
     } else {
-      request->send(400, "text/plain", "Invalid action");
+      request->send(400, "text/plain", "Invalid action");                             // Send an error response if the action is invalid
     }
   } else {
-    request->send(400, "text/plain", "Missing parameters");
+    request->send(400, "text/plain", "Missing parameters");                           // Send an error response if parameters are missing
   }
 }
 
-// Function to handle data upload in a separate task
+// Function to handle periodic data uploads in a separate FreeRTOS task
 void uploadTask(void *parameter) {
   while (true) {
     // Reconnect WiFi if disconnected
@@ -273,11 +277,13 @@ void uploadTask(void *parameter) {
       Serial.println("Wi-Fi connection lost. Reconnecting...");
       connectWifi();
     }
+    // Upload data for each monitored device
     uploadData("Motor Fan", getFanPower(), getFanCurrent(), getFanVoltage());  
     uploadData("LED Strip", getLightPower(), getLightCurrent(), getLightVoltage()); 
     uploadData("USB Charger", getChargerPower(), getChargerCurrent(), getChargerVoltage()); 
     uploadData("Washing Machine", getWashingPower(), getWashingCurrent(), getWashingVoltage()); 
-    vTaskDelay(interval / portTICK_PERIOD_MS);  // Delay for the next interval
+
+    vTaskDelay(interval / portTICK_PERIOD_MS);      // Delay for a specified interval before the next upload
   }
 }
 
@@ -286,10 +292,10 @@ void uploadTask(void *parameter) {
 // ************************************
 void IRAM_ATTR handleButtonPress1() {
   unsigned long interruptTime = millis();
-  if (interruptTime - lastFanButtonTime > 300) {
-    fanButtonPressed = true;
-  }
-  lastFanButtonTime = interruptTime;
+  if (interruptTime - lastFanButtonTime > 300) {        // Check if last button interrupt more than 300ms (for debouncing the button)
+    fanButtonPressed = true;                            // Button presss is true only if last interrupt more than 300ms
+  } 
+  lastFanButtonTime = interruptTime;                    // Update last button press interrupt time
 }
 
 void IRAM_ATTR handleButtonPress2() {
@@ -307,24 +313,24 @@ void setup() {
   Serial.begin(115200);
 
   // Configure I2C and INA260 sensors
-  Wire.begin(I2C_SDA, I2C_SCL);
+  Wire.begin(I2C_SDA, I2C_SCL);             // Initialize I2C communication with specified SDA and SCL pins
   INABegin(ina260_1, INA260_ADDR1, 1);
   INABegin(ina260_2, INA260_ADDR2, 2);
   INABegin(ina260_3, INA260_ADDR3, 3);
   INABegin(ina260_4, INA260_ADDR4, 4);
 
-  // Setup relays and LED strip
+  // Configure GPIO pins
   pinMode(RELAY_PIN1, OUTPUT);
   pinMode(RELAY_PIN2, OUTPUT);
   pinMode(RELAY_PIN3, OUTPUT);
-  digitalWrite(RELAY_PIN1, RELAY_OFF);
-  digitalWrite(RELAY_PIN2, RELAY_OFF);
-  digitalWrite(RELAY_PIN3, RELAY_OFF);
-  pinMode(BUTTON_PIN1, INPUT_PULLUP);
-  pinMode(BUTTON_PIN2, INPUT);
-  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN1), handleButtonPress1, FALLING);
-  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN2), handleButtonPress2, RISING);
-  strip.begin();
+  digitalWrite(RELAY_PIN1, RELAY_OFF);      // Ensure relay 1 is off initially
+  digitalWrite(RELAY_PIN2, RELAY_OFF);      // Ensure relay 2 is off initially
+  digitalWrite(RELAY_PIN3, RELAY_OFF);      // Ensure relay 3 is off initially
+  pinMode(BUTTON_PIN1, INPUT_PULLUP);       // Set button pin 1 as input with an internal pull-up resistor
+  pinMode(BUTTON_PIN2, INPUT_PULLUP);       // Set button pin 2 as input with an internal pull-up resistor
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN1), handleButtonPress1, FALLING);   // Trigger interrupt on falling edge for button 1
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN2), handleButtonPress2, FALLING);   // Trigger interrupt on falling edge for button 2
+  strip.begin();                            // Initialize LED strip
   pinMode(TRIG_PIN1, OUTPUT);
   pinMode(ECHO_PIN1, INPUT);
   pinMode(TRIG_PIN2, OUTPUT);
@@ -334,32 +340,33 @@ void setup() {
   connectWifi();
 
   // Setup HTTP server
-  server.on("/control", HTTP_POST, handleControlRequest);
-  server.begin();
+  server.on("/control", HTTP_POST, handleControlRequest);   // Define route and handler for POST requests to "/control"
+  server.begin();                                           // Start the HTTP server
   Serial.println("HTTP server started");
 
-  // FreeRTOS
-  xTaskCreatePinnedToCore(uploadTask, "Upload Task", 4096, NULL, 1, NULL, 1);
+  // Create a FreeRTOS task for uploading data
+  xTaskCreatePinnedToCore(uploadTask, "Upload Task", 4096, NULL, 1, NULL, 1);     
 }
 
 // ************************************
 // Loop
 // ************************************
 void loop() {
-  if (fanButtonPressed) {
+  if (fanButtonPressed) {                 // Check if the fan button was pressed
     Serial.println("Fan button");
-    toggleFan();
-    fanButtonPressed = false;
+    toggleFan();                          // Toggle the state of the fan
+    fanButtonPressed = false;             // Reset the flag after handling the press
   }
 
   if (lightButtonPressed) {
-    Serial.println("Light button");
-    toggleLight();
-    lightButtonPressed = false;
+    Serial.println("Light button");       // Check if the light button was pressed
+    toggleLight();                        // Toggle the state of the LED strip
+    lightButtonPressed = false;           // Reset the flag after handling the press
   }
 
-  if (washingOn) {
-    if (millis() - washingStartTime > 5000) {  // 5s
+  if (washingOn) {                              // Check if the washing machine is currently on
+    if (millis() - washingStartTime > 5000) {   // If the washing machine has been running for more than 5 seconds, stop it (need set to more realistic value for real applications)
+                                                // To prevent long periods of high current draw
       stopWashing();
     }
   }
