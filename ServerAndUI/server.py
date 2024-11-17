@@ -42,32 +42,24 @@ def send_email(subject, message):
 def insert_energy_data(appliance, power, current, voltage):
     conn = sqlite3.connect('energy_monitor.db')
     cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS energy_usage (
-                        timestamp TEXT,
-                        appliance TEXT,
-                        power REAL,
-                        current REAL,
-                        voltage REAL,
-                        energy REAL
-                      )''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS notifications (
-                        timestamp TEXT,
-                        message TEXT
-                      )''')
-    # Get the last timestamp for this appliance
-    cursor.execute('SELECT timestamp FROM energy_usage WHERE appliance = ? ORDER BY timestamp DESC LIMIT 1', (appliance,))
+    # Get the last timestamp and power for this appliance
+    cursor.execute('SELECT timestamp, power FROM energy_usage WHERE appliance = ? ORDER BY timestamp DESC LIMIT 1', (appliance,))
     last_entry = cursor.fetchone()
     current_timestamp = datetime.now()
     
     if last_entry:
         last_timestamp = datetime.strptime(last_entry[0], "%Y-%m-%d %H:%M:%S")
+        last_power = last_entry[1]
         delta_t = (current_timestamp - last_timestamp).total_seconds() / 3600.0  # in hours
+        # Calculate average power
+        avg_power = (power + last_power) / 2.0
     else:
         delta_t = 0  # First entry for this appliance
+        avg_power = power  # No previous power to average with
     
-    # Calculate energy (Wh)
-    energy = power * delta_t
-
+    # Calculate energy (Wh) using the trapezoidal rule
+    energy = avg_power * delta_t
+    
     timestamp_str = current_timestamp.strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute('''INSERT INTO energy_usage (timestamp, appliance, power, current, voltage, energy)
                       VALUES (?, ?, ?, ?, ?, ?)''', 
@@ -77,11 +69,7 @@ def insert_energy_data(appliance, power, current, voltage):
     
     # Threshold checks
     if power > POWER_THRESHOLD:
-        alert_message = []
-        if power > POWER_THRESHOLD:
-            alert_message.append(f"Power threshold breached for {appliance}: {power}W")
-        
-        alert_message = "\n".join(alert_message)
+        alert_message = f"Power threshold breached for {appliance}: {power}W"
         send_email("Threshold Alert", alert_message)
 
 # Flask endpoints
