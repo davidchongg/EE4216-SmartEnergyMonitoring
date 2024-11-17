@@ -11,6 +11,8 @@ cursor.execute('''
         timestamp TEXT,
         appliance TEXT,
         power REAL,
+        current REAL,
+        voltage REAL,
         energy REAL
     )
 ''')
