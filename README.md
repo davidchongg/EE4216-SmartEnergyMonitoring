@@ -8,7 +8,7 @@ The Smart Energy Monitoring and Control System is an IoT-based project designed 
 ![alt text](https://github.com/davidchongg/EE4216-SmartEnergyMonitoring/blob/main/Images/Circuit.png)
 
 ## Dashboard
-Control
+Home Page (Control)
 ![alt text](https://github.com/davidchongg/EE4216-SmartEnergyMonitoring/blob/main/Images/Dashboard%20-%20Control.png)
 
 Energy Consumption
